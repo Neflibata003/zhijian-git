@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E7906E"/><stop offset="1" stop-color="#B4573A"/>
+    </linearGradient>
+    <linearGradient id="sheet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFDF7"/><stop offset="1" stop-color="#F6EFDF"/>
+    </linearGradient>
+    <linearGradient id="quill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFDF7"/><stop offset="1" stop-color="#F0E4CC"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="22" stdDeviation="22" flood-color="#5A2412" flood-opacity=".34"/>
+    </filter>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#5A2412" flood-opacity=".30"/>
+    </filter>
+  </defs>
+
+  <!-- 底板 -->
+  <rect x="40" y="40" width="944" height="944" rx="232" fill="url(#tile)"/>
+  <rect x="52" y="52" width="920" height="920" rx="220" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="8"/>
+
+  <!-- 信笺（微微倾斜） -->
+  <g transform="rotate(-6 512 520)" filter="url(#shadow)">
+    <path d="M262 246a58 58 0 0 1 58-58h288l166 166v396a58 58 0 0 1-58 58H320a58 58 0 0 1-58-58z" fill="url(#sheet)"/>
+    <path d="M608 188v118a48 48 0 0 0 48 48h118z" fill="#E9DCC3"/>
+    <path d="M608 188l166 166h-118a48 48 0 0 1-48-48z" fill="#D9C9AA" opacity=".55"/>
+
+    <!-- 版本记录：两条线、三个节点、右侧是说明文字行 -->
+    <path d="M394 400V690" stroke="#B5573A" stroke-width="28" stroke-linecap="round" fill="none"/>
+    <path d="M394 610C394 540 470 520 560 500" stroke="#B5573A" stroke-width="28" stroke-linecap="round" fill="none"/>
+    <rect x="452" y="384" width="190" height="26" rx="13" fill="#D9CDB6"/>
+    <rect x="452" y="424" width="120" height="20" rx="10" fill="#E9E0CE"/>
+    <rect x="616" y="486" width="110" height="24" rx="12" fill="#D9CDB6"/>
+    <rect x="452" y="674" width="170" height="26" rx="13" fill="#D9CDB6"/>
+    <circle cx="394" cy="400" r="40" fill="#FFFDF7" stroke="#B5573A" stroke-width="28"/>
+    <circle cx="394" cy="690" r="40" fill="#B5573A"/>
+    <circle cx="560" cy="500" r="34" fill="#3A2A22"/>
+  </g>
+
+  <!-- 羽毛笔 -->
+  <g transform="translate(742 738) rotate(38)" filter="url(#soft)">
+    <path d="M0-250C112-196 138-40 46 132C22 176-8 206-34 226C-28 160-46 96-40 30C-34-64-22-170 0-250Z" fill="url(#quill)" stroke="#3A2A22" stroke-width="16" stroke-linejoin="round"/>
+    <path d="M0-236C-6-120-6 20-30 226" stroke="#3A2A22" stroke-width="12" stroke-linecap="round" fill="none"/>
+    <path d="M-10-120C40-96 72-64 90-20M-14-40C30-20 58 12 66 56M-18 40C14 56 34 84 36 112" stroke="#B5573A" stroke-opacity=".55" stroke-width="9" stroke-linecap="round" fill="none"/>
+    <path d="M-34 226l-8 34 26-16z" fill="#3A2A22" stroke="#3A2A22" stroke-width="10" stroke-linejoin="round"/>
+  </g>
+</svg>

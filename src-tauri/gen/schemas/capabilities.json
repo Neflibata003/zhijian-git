@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"仅主窗口事件和用户选择文件夹/导出位置","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-minimize","core:window:allow-toggle-maximize","core:window:allow-close","core:window:allow-start-dragging","dialog:allow-open","dialog:allow-save"]}}
