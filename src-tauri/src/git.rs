@@ -85,7 +85,8 @@ fn arg<'a>(args: &'a Value, key: &str) -> &'a str { args[key].as_str().unwrap_or
 fn selected(args: &Value) -> Result<Vec<String>, String> { args["files"].as_array().ok_or("未选择文件")?.iter().map(|x| file(x.as_str().ok_or("无效文件名")?).map(str::to_string)).collect() }
 fn fingerprint(bytes: &[u8]) -> String { let mut h = DefaultHasher::new(); bytes.hash(&mut h); format!("{:x}", h.finish()) }
 fn staged(g: &Git) -> Result<Value, String> {
-    let diff = g.bytes(&["diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv"])?;
+    // 指纹取自暂存区清单（模式、对象 ID、路径），体积很小；不要用完整 diff，含大量二进制时会超过输出上限
+    let diff = g.bytes(&["ls-files", "-s", "-z"])?;
     Ok(json!({"token":fingerprint(&diff),"files":parse_names(&g.bytes(&["diff","--cached","--name-status","-z"])?)}))
 }
 fn parse_names(bytes: &[u8]) -> Vec<Value> {
@@ -162,11 +163,18 @@ pub fn dispatch(app: &tauri::AppHandle, op: &str, path: Option<&str>, args: Valu
         "diff" => diff(&g,&args),
         "stage" | "unstage" => {
             let mut files=selected(&args)?; if files.is_empty(){return Err("请先选择文件".into());}
-            let statuses=parse_status(&g.bytes(&["status","--porcelain=v1","-z"])?);
-            for p in files.clone(){if let Some(old)=statuses.iter().find(|s|s["path"]==p).and_then(|s|s["old"].as_str()){files.push(file(old)?.into());}}
+            // 重命名要把新旧路径一起处理；用哈希表查找，几千个文件也不会变慢
+            let olds:std::collections::HashMap<String,String>=parse_status(&g.bytes(&["status","--porcelain=v1","-z"])?).into_iter().filter_map(|s|Some((s["path"].as_str()?.to_string(),s["old"].as_str()?.to_string()))).collect();
+            let extra:Vec<String>=files.iter().filter_map(|p|olds.get(p).cloned()).collect();
+            for old in extra{files.push(file(&old)?.into());}
             files.sort();files.dedup();
-            let mut command=if op=="stage"{vec!["add","--"]}else if g.run(&["rev-parse","--verify","HEAD"])?.ok{vec!["reset","-q","HEAD","--"]}else{vec!["rm","--cached","-r","--ignore-unmatch","--"]};
-            command.extend(files.iter().map(String::as_str)); g.bytes(&command)?; Ok(json!(true))
+            let head=g.run(&["rev-parse","--verify","HEAD"])?.ok;
+            let base:Vec<&str>=if op=="stage"{vec!["add","--"]}else if head{vec!["reset","-q","HEAD","--"]}else{vec!["rm","--cached","-r","--ignore-unmatch","--"]};
+            // Windows 命令行上限约 32767 字符，超过会报 os error 206，所以分批传给 Git
+            for chunk in path_chunks(&files,24000){
+                let mut command=base.clone(); command.extend(chunk.iter().map(String::as_str)); g.bytes(&command)?;
+            }
+            Ok(json!(true))
         }
         "prepareCommit" => staged(&g),
         "commit" => {
@@ -340,6 +348,17 @@ pub fn dispatch(app: &tauri::AppHandle, op: &str, path: Option<&str>, args: Valu
     }
 }
 
+/// 把路径按命令行长度分批；每批总长不超过 limit 个字符（单个路径超长时独占一批）。
+fn path_chunks(files: &[String], limit: usize) -> Vec<&[String]> {
+    let (mut out, mut start, mut len) = (vec![], 0usize, 0usize);
+    for (i, f) in files.iter().enumerate() {
+        let cost = f.chars().count() + 3;
+        if i > start && len + cost > limit { out.push(&files[start..i]); start = i; len = 0; }
+        len += cost;
+    }
+    if start < files.len() { out.push(&files[start..]); }
+    out
+}
 /// 校验并返回合法的分支名（拒绝以 - 开头、含非法字符的名称）。
 fn branch_name(g: &Git, value: &str) -> Result<String, String> {
     if value.is_empty() || value.starts_with('-') || value.len() > 200 { return Err("无效分支名".into()); }
@@ -514,6 +533,29 @@ fn hunk_patch(diff: &[u8], index: usize) -> Option<Vec<u8>> {
         let err = g.bytes(&["merge", "--no-edit", "x"]).unwrap_err();
         assert!(err.contains("存在冲突"), "冲突提示应来自 stdout 的 CONFLICT 行: {err}");
         assert_eq!(snapshot(&g).unwrap()["operation"], "merge");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test] fn path_chunks_respect_limit_and_keep_everything() {
+        let files: Vec<String> = (0..8000).map(|i| format!("很长的目录名/子目录/文件{i}.txt")).collect();
+        let chunks = path_chunks(&files, 24000);
+        assert!(chunks.len() > 1);
+        assert_eq!(chunks.iter().map(|c| c.len()).sum::<usize>(), 8000, "不丢文件");
+        for c in &chunks { assert!(c.iter().map(|f| f.chars().count() + 3).sum::<usize>() <= 24000 + 100); }
+        assert_eq!(path_chunks(&["a".to_string()], 10).len(), 1);
+        assert!(path_chunks(&[], 10).is_empty());
+    }
+
+    #[test] fn stage_thousands_of_files_in_batches() {
+        let (dir, cancel) = repo(); let g = g(&dir, &cancel);
+        std::fs::create_dir_all(dir.join("一个相当长的目录名称用来撑满命令行")).unwrap();
+        let names: Vec<String> = (0..3000).map(|i| format!("一个相当长的目录名称用来撑满命令行/文件编号{i:05}.txt")).collect();
+        for n in &names { std::fs::write(dir.join(n), "x").unwrap(); }
+        for c in path_chunks(&names, 24000) { let mut cmd = vec!["add", "--"]; cmd.extend(c.iter().map(String::as_str)); g.bytes(&cmd).unwrap(); }
+        assert_eq!(g.text(&["diff", "--cached", "--name-only"]).unwrap().lines().count(), 3000);
+        // 一次性传入全部路径会超过命令行上限
+        let mut all = vec!["add", "--"]; all.extend(names.iter().map(String::as_str));
+        assert!(g.run(&all).is_err(), "不分批应触发 os error 206");
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
